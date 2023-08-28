@@ -40,6 +40,8 @@ public final class Loader: ObservableObject {
             // shows loading bar at the top of the screen without blocking the content, error is shown as label at the top for couple of seconds
             case nonblocking(fail: Fail = .nonblocking)
             
+            case custom(update: (_ isLoading: Bool)->(), fail: Fail = .modal)
+            
             case none(fail: Fail = .none)
             
             public var id: String {
@@ -47,6 +49,7 @@ public final class Loader: ObservableObject {
                 case .opaque: return "opaque"
                 case .modal(_, _, _): return "modal"
                 case .nonblocking: return "nonblocking"
+                case .custom(_, _): return "custom"
                 case .none: return "none"
                 }
             }
@@ -56,6 +59,7 @@ public final class Loader: ObservableObject {
                 case .opaque(let fail),
                      .modal(_, _, let fail),
                      .nonblocking(let fail),
+                     .custom(_, let fail),
                      .none(let fail):
                     return fail
                 }
@@ -160,7 +164,6 @@ public final class Loader: ObservableObject {
                     if let operation = operation,
                        let wSelf = self,
                        wSelf.processing[id] === operation {
-                        
                         wSelf.fails[id] = Operation.Fail(error: error,
                                                          presentation: presentation,
                                                          retry: { self?.run(presentation, id: id, action) },
@@ -173,11 +176,18 @@ public final class Loader: ObservableObject {
                 if let wSelf = self,
                    let operation = operation,
                    wSelf.processing[id] === operation {
+                    
+                    if case .custom(let update, _) = presentation {
+                        update(false)
+                    }
                     wSelf.processing[id] = nil
                 }
             }
         }
         operation.cancel = { task.cancel() }
+        if case .custom(let update, _) = presentation {
+            update(true)
+        }
         processing[id] = operation
     }
     
