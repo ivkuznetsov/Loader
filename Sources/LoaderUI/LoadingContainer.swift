@@ -93,7 +93,10 @@ public struct LoadingContainer<Content: View>: View {
                     customization.loadingView(operation)
                 }
             }
-        }.alert(isPresented: Binding(get: { fails[.modal] != nil  }, set: { _ in fails[.modal]?.dismiss() }),
+        }.alert(isPresented: Binding(get: { fails[.modal] != nil  }, set: { _ in
+            fails[.modal]?.dismiss()
+            fails[.modal] = nil
+        }),
                 error: fails[.modal]?.error.asLocalizedError,
                 actions: {
             Button("OK", action: { })

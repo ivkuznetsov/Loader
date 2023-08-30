@@ -84,7 +84,7 @@ public final class Loader: ObservableObject {
         public let presentation: Presentation
         
         fileprivate let id: String
-        public fileprivate(set) var cancel: (()->())!
+        public fileprivate(set) var cancel: (()->())?
         
         #if os(iOS)
         private var backgroundTaskId: UIBackgroundTaskIdentifier?
@@ -124,7 +124,7 @@ public final class Loader: ObservableObject {
         public static func == (lhs: Loader.Operation, rhs: Loader.Operation) -> Bool { lhs.hashValue == rhs.hashValue }
         
         deinit {
-            cancel()
+            cancel?()
             #if os(iOS)
             endTask()
             #endif
@@ -135,6 +135,8 @@ public final class Loader: ObservableObject {
     
     @Published public private(set) var processing: [String:Operation] = [:]
     @Published public private(set) var fails: [String:Operation.Fail] = [:]
+    
+    private var observers: [String:AnyCancellable] = [:]
     
     // don't handle Fail for such errors in the UI
     public static var suppressError: ((Error)->Bool)?
@@ -149,53 +151,82 @@ public final class Loader: ObservableObject {
                     id: String? = nil,
                     _ action: @escaping (_ progress: @escaping (Double)->()) async throws -> ()) {
         
-        let id = id ?? UUID().uuidString
-        let operation = Operation(id: id, presentation: presentation)
-        
-        processing[id]?.cancel()
-        processing[id] = nil
-        fails[id] = nil
+        let operation = create(id: id, presentation: presentation)
         
         let task = Task.detached { [weak self, weak operation] in
-            do {
-                try await action { operation?.update(progress: $0) }
-            } catch {
+            
+            let complete: (Error?)->() = { error in
                 Task { @MainActor [weak self, weak operation] in
-                    if let operation = operation,
-                       let wSelf = self,
-                       wSelf.processing[id] === operation {
-                        wSelf.fails[id] = Operation.Fail(error: error,
-                                                         presentation: presentation,
-                                                         retry: { self?.run(presentation, id: id, action) },
-                                                         dismiss: { self?.fails[id] = nil })
+                    if let wSelf = self,
+                       let operation = operation,
+                       wSelf.processing[operation.id] === operation {
+                        if let error = error {
+                            wSelf.fails[operation.id] = Operation.Fail(error: error,
+                                                                       presentation: presentation,
+                                                                       retry: { self?.run(presentation, id: operation.id, action) },
+                                                                       dismiss: { self?.fails[operation.id] = nil })
+                        }
+                        wSelf.complete(id: operation.id)
                     }
                 }
             }
             
-            Task { @MainActor [weak self, weak operation] in
-                if let wSelf = self,
-                   let operation = operation,
-                   wSelf.processing[id] === operation {
-                    
-                    if case .custom(let update, _) = presentation {
-                        update(false)
-                    }
-                    wSelf.processing[id] = nil
-                }
+            do {
+                try await action { operation?.update(progress: $0) }
+                complete(nil)
+            } catch {
+                complete(error)
             }
         }
         operation.cancel = { task.cancel() }
-        if case .custom(let update, _) = presentation {
-            update(true)
+        processing[operation.id] = operation
+    }
+    
+    private func create(id: String?, presentation: Operation.Presentation) -> Operation {
+        let id = id ?? UUID().uuidString
+        let operation = Operation(id: id, presentation: presentation)
+        if case .custom(let update, _) = presentation { update(true) }
+        processing[id]?.cancel?()
+        processing[id] = nil
+        fails[id] = nil
+        return operation
+    }
+    
+    private func complete(id: String) {
+        if let operation = processing[id] {
+            if case .custom(let update, _) = operation.presentation { update(false) }
+            processing[id] = nil
         }
-        processing[id] = operation
     }
     
     public func cancelOperations() {
-        processing.forEach { $0.value.cancel() }
+        processing.forEach { $0.value.cancel?() }
     }
     
     public func cancelOperation(_ id: String) {
-        processing[id]?.cancel()
+        processing[id]?.cancel?()
+    }
+    
+    @MainActor
+    public func attach<T>(_ loadable: Published<Loadable<T>.State>.Publisher, _ presentation: Operation.Presentation, id: String) {
+        observers[id] = loadable.receive(on: DispatchQueue.main).sink { [weak self] value in
+            guard let wSelf = self else { return }
+            
+            switch value {
+            case .loading:
+                if case .custom(let update, _) = presentation { update(true) }
+                wSelf.fails[id] = nil
+                wSelf.processing[id] = Operation(id: id, presentation: presentation)
+            case .ready(_):
+                wSelf.fails[id] = nil
+                wSelf.complete(id: id)
+            case .failed(let error, let retry):
+                wSelf.fails[id] = Operation.Fail(error: error,
+                                                 presentation: presentation,
+                                                 retry: retry,
+                                                 dismiss: { self?.fails[id] = nil })
+                wSelf.complete(id: id)
+            }
+        }
     }
 }

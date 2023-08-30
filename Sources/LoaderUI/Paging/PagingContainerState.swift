@@ -13,7 +13,7 @@ final class PagingContainerState: ObservableObject {
     
     var paging: (any ObservablePagingLoader)? {
         didSet {
-            observer = paging?.loadingState.$value.sink { [weak self] value in
+            observer = paging?.loadingState.$state.sink { [weak self] value in
                 if let wSelf = self, value == .stop, wSelf.isLoadingVisible {
                     wSelf.paging?.loadMore()
                 }

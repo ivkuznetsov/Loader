@@ -16,9 +16,9 @@ public struct PagingLoadingView: View {
     
     public var body: some View {
         ZStack {
-            switch loadingState.value {
-            case .stop: Color.clear
-            case .failed(_): Button("Retry") { state.retry() }
+            switch loadingState.state {
+            case .ready(_): Color.clear
+            case .failed(_, _): Button("Retry") { state.retry() }
             case .loading:
                 if state.refreshing == nil {
                     InCellProgressView()

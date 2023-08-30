@@ -43,7 +43,7 @@ public struct PagingContainer<Content: View>: View {
               refresh: {
             await withCheckedContinuation { continuation in
                 paging.observed.refresh(userInitiated: true)
-                state.refreshing = paging.observed.loadingState.$value.dropFirst().sink(receiveValue: {
+                state.refreshing = paging.observed.loadingState.$state.dropFirst().sink(receiveValue: {
                     if $0 != .loading {
                         state.refreshing = nil
                         continuation.resume()
