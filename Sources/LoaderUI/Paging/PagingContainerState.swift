@@ -9,6 +9,7 @@ import Foundation
 import Combine
 import Loader
 
+@MainActor
 final class PagingContainerState: ObservableObject {
     
     var paging: (any ObservablePagingLoader)? {

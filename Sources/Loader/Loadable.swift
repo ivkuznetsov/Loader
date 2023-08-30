@@ -11,6 +11,7 @@ public extension LoadingState.State {
     static var stop: LoadingState.State { .ready(nil) }
 }
 
+@MainActor
 public final class Loadable<T>: ObservableObject {
     
     public enum State: Equatable {
@@ -34,45 +35,54 @@ public final class Loadable<T>: ObservableObject {
     
     @Published public private(set) var state: State = .ready(nil)
     
-    @MainActor
     public func update(_ state: State) {
+        cancelLoading()
+        
         if self.state != state {
             self.state = state
         }
     }
     
-    @MainActor
     public var value: T? {
         get {
-            if case .ready(let t) = state {
-                return t
-            }
+            if case .ready(let t) = state { return t }
             return nil
         }
-        set {
-            update(.ready(newValue))
-        }
+        set { update(.ready(newValue)) }
     }
     
-    public init() { }
+    public nonisolated init() { }
     
-    private var task: Task<Void, Error>?
+    private var task: (id: UUID, task: Task<Void, Error>)?
     
     public func cancelLoading() {
-        task?.cancel()
+        task?.task.cancel()
         task = nil
     }
     
-    public func load(_ closure: @escaping () async throws ->T?) {
-        task = Task {
-            await update(.loading)
-            do {
-                await update(.ready(try await closure()))
-            } catch {
-                await update(.failed(error, retry: { [weak self] in
-                    self?.load(closure)
-                }))
-            }
+    private func update(_ state: State, id: UUID) {
+        if task?.id == id, self.state != state {
+            self.state = state
         }
+    }
+    
+    public func load(_ closure: @escaping () async throws ->T?) {
+        cancelLoading()
+        let id = UUID()
+        
+        task = (id, Task {
+            update(.loading, id: id)
+            do {
+                update(.ready(try await closure()), id: id)
+            } catch {
+                update(.failed(error, retry: { [weak self] in
+                    self?.load(closure)
+                }), id: id)
+            }
+        })
+    }
+    
+    deinit {
+        task?.task.cancel()
     }
 }

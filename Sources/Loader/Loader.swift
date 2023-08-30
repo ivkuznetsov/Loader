@@ -207,16 +207,19 @@ public final class Loader: ObservableObject {
         processing[id]?.cancel?()
     }
     
-    @MainActor
-    public func attach<T>(_ loadable: Published<Loadable<T>.State>.Publisher, _ presentation: Operation.Presentation, id: String) {
+    public func removeObserving(id: String) {
+        observers[id] = nil
+    }
+    
+    public func observe<T>(_ loadable: Published<Loadable<T>.State>.Publisher, _ presentation: Operation.Presentation, id: String? = nil) {
+        let id = id ?? UUID().uuidString
+        
         observers[id] = loadable.receive(on: DispatchQueue.main).sink { [weak self] value in
             guard let wSelf = self else { return }
             
             switch value {
             case .loading:
-                if case .custom(let update, _) = presentation { update(true) }
-                wSelf.fails[id] = nil
-                wSelf.processing[id] = Operation(id: id, presentation: presentation)
+                wSelf.processing[id] = wSelf.create(id: id, presentation: presentation)
             case .ready(_):
                 wSelf.fails[id] = nil
                 wSelf.complete(id: id)

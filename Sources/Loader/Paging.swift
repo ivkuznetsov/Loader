@@ -26,6 +26,7 @@ public typealias ObservablePagingLoader = PagingLoader & ObservableObject
 
 public extension PagingLoader {
     
+    @MainActor
     func initalRefresh() {
         if loadingState.state != .loading && dataSource.content.items.isEmpty {
             refresh(userInitiated: false)
@@ -36,6 +37,7 @@ public extension PagingLoader {
         load(offset: nil, userInitiated: userInitiated)
     }
     
+    @MainActor
     func loadMore(userInitiated: Bool = false) {
         if (loadingState.state != .loading && dataSource.content.next != nil) || userInitiated {
             load(offset: dataSource.content.next, userInitiated: userInitiated)
