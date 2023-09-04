@@ -53,7 +53,11 @@ public final class Loadable<T>: ObservableObject {
     
     public nonisolated init() { }
     
-    private var task: (id: UUID, task: Task<Void, Error>)?
+    public init(state: State = .ready(nil)) {
+        self.state = state
+    }
+    
+    private var task: (id: UUID, task: Task<T?, Error>)?
     
     public func cancelLoading() {
         task?.task.cancel()
@@ -66,20 +70,26 @@ public final class Loadable<T>: ObservableObject {
         }
     }
     
-    public func load(_ closure: @escaping () async throws ->T?) {
+    public func load(_ closure: @escaping () async throws ->T?) async throws -> T? {
         cancelLoading()
         let id = UUID()
         
         task = (id, Task {
             update(.loading, id: id)
             do {
-                update(.ready(try await closure()), id: id)
+                let result = try await closure()
+                update(.ready(result), id: id)
+                return result
             } catch {
                 update(.failed(error, retry: { [weak self] in
-                    self?.load(closure)
+                    Task {
+                        try await self?.load(closure)
+                    }
                 }), id: id)
+                throw error
             }
         })
+        return try await task?.task.value
     }
     
     deinit {
