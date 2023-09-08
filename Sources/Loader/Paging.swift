@@ -13,6 +13,8 @@ import SwiftUI
 public protocol PagingLoader {
     associatedtype DataSource: PagingDataSource
     
+    var initialLoading: Loader.Operation.Presentation { get }
+    
     var dataSource: DataSource { get }
     
     var loader: Loader { get }
@@ -82,7 +84,7 @@ extension Paging {
     
     public final class Manager<DataSource: PagingDataSource & ObservableObject>: ObservablePagingLoader {
     
-        private let initialLoading: Loader.Operation.Presentation
+        public let initialLoading: Loader.Operation.Presentation
         private let uid = UUID().uuidString
         
         public let loader: Loader
@@ -104,17 +106,17 @@ extension Paging {
         
         @MainActor
         public func load(offset: AnyHashable?, userInitiated: Bool) {
-            loader.run(userInitiated ? .none(fail: .modal) : (dataSource.content.items.isEmpty ? initialLoading : .none()),
+            loader.run(userInitiated ? .none(fail: .modal) : (dataSource.content.items.isEmpty ? initialLoading : .none(fail: offset == nil ? .nonblocking : .none)),
                        id: uid) { [weak self] _ in
                 do {
-                    self?.loadingState.update(.loading)
+                    self?.loadingState.state = .loading
                     try await self?.dataSource.load(offset: offset)
-                    self?.loadingState.update(.stop)
+                    self?.loadingState.state = .stop
                 } catch {
                     if Loader.isSuppressed(error) {
-                        self?.loadingState.update(.stop)
+                        self?.loadingState.state = .stop
                     } else {
-                        self?.loadingState.update(.failed(error))
+                        self?.loadingState.state = .failed(error)
                     }
                     throw error
                 }

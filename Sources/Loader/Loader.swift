@@ -211,21 +211,21 @@ public final class Loader: ObservableObject {
         observers[id] = nil
     }
     
-    public func observe<T>(_ loadable: Published<Loadable<T>.State>.Publisher, _ presentation: Operation.Presentation, id: String? = nil) {
+    public func observe<T>(_ loadable: Loadable<T>, _ presentation: @escaping (T?)->Operation.Presentation, id: String? = nil) {
         let id = id ?? UUID().uuidString
         
-        observers[id] = loadable.receive(on: DispatchQueue.main).sink { [weak self] value in
+        observers[id] = loadable.$state.receive(on: DispatchQueue.main).sink { [weak self, weak loadable] value in
             guard let wSelf = self else { return }
             
             switch value {
             case .loading:
-                wSelf.processing[id] = wSelf.create(id: id, presentation: presentation)
-            case .ready(_):
+                wSelf.processing[id] = wSelf.create(id: id, presentation: presentation(loadable?.value))
+            case .stop:
                 wSelf.fails[id] = nil
                 wSelf.complete(id: id)
             case .failed(let error, let retry):
                 wSelf.fails[id] = Operation.Fail(error: error,
-                                                 presentation: presentation,
+                                                 presentation: presentation(loadable?.value),
                                                  retry: retry,
                                                  dismiss: { self?.fails[id] = nil })
                 wSelf.complete(id: id)

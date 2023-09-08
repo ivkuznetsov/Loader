@@ -10,23 +10,23 @@ import Loader
 public struct FailToast: View {
     
     private let fail: Loader.Operation.Fail
-    private let backgroundColor: Color
     @State private var isPresented = false
     
-    public init(fail: Loader.Operation.Fail, backgroundColor: Color = .secondary) {
+    public init(fail: Loader.Operation.Fail) {
         self.fail = fail
-        self.backgroundColor = backgroundColor
     }
     
     public var body: some View {
         VStack {
             Text(fail.error.localizedDescription)
+                .foregroundColor(Color.white)
                 .font(.system(size: 14))
                 .multilineTextAlignment(.center)
                 .padding(.all, 15)
                 .background(content: {
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(backgroundColor)
+                        .fill(.regularMaterial)
+                        .environment(\.colorScheme, .dark)
                 })
                 .padding(.all, 15)
             Spacer()

@@ -36,7 +36,7 @@ public struct LoadingContainer<Content: View>: View {
     
     public init(_ loaders: [Loader],
                 customization: Customization = .init(),
-                content: ()->Content) {
+                @ViewBuilder content: ()->Content) {
         self._loaders = .init(wrappedValue: loaders)
         self.content = content()
         self.customization = customization
@@ -44,7 +44,7 @@ public struct LoadingContainer<Content: View>: View {
     
     public init(_ loader: Loader,
                 customization: Customization = .init(),
-                content: ()->Content) {
+                @ViewBuilder content: ()->Content) {
         self._loaders = .init(wrappedValue: [loader])
         self.content = content()
         self.customization = customization

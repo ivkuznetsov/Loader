@@ -55,13 +55,15 @@ public struct PagingContainer<Content: View>: View {
     
     public var body: some View {
         content(self)
+            .animation(state.oldItemsCount > 0 && paging.observed.itemsCount > 0 ? .easeOut : nil,
+                       value: paging.observed.itemsCount)
+            .onChange(of: paging.observed.itemsCount, perform: { state.oldItemsCount = $0 })
             .transaction { transaction in
                 if paging.observed !== state.paging {
                     transaction.disablesAnimations = true
                     state.paging = paging.observed
                 }
             }
-            .animation(.easeOut, value: paging.observed.itemsCount)
             .background {
                 GeometryReader { updateContainerFrame(proxy: $0) }
             }.onAppear {

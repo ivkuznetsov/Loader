@@ -6,26 +6,17 @@ import Foundation
 
 public typealias LoadingState = Loadable<Void>
 
-public extension LoadingState.State {
-    
-    static var stop: LoadingState.State { .ready(nil) }
-}
-
 @MainActor
 public final class Loadable<T>: ObservableObject {
     
     public enum State: Equatable {
-        case ready(T?)
+        case stop
         case loading
         case failed(Error, retry: (()->())? = nil)
         
         public static func == (lhs: State, rhs: State) -> Bool {
             switch (lhs, rhs) {
-            case (.ready(let value1), .ready(let value2)):
-                if let value1 = value1 as? AnyHashable, let value2 = value2 as? AnyHashable {
-                    return value1 == value2
-                }
-                return true
+            case (.stop, .stop): return true
             case (.loading, .loading): return true
             case (.failed(let error1, _), .failed(let error2, _)): return error1.localizedDescription == error2.localizedDescription
             default: return false
@@ -33,28 +24,13 @@ public final class Loadable<T>: ObservableObject {
         }
     }
     
-    @Published public private(set) var state: State = .ready(nil)
-    
-    public func update(_ state: State) {
-        cancelLoading()
-        
-        if self.state != state {
-            self.state = state
-        }
-    }
-    
-    public var value: T? {
-        get {
-            if case .ready(let t) = state { return t }
-            return nil
-        }
-        set { update(.ready(newValue)) }
-    }
+    @Published public var state: State = .stop
+    @Published public var value: T?
     
     public nonisolated init() { }
     
-    public init(state: State = .ready(nil)) {
-        self.state = state
+    public init(value: T) {
+        self.value = value
     }
     
     private var task: (id: UUID, task: Task<T?, Error>)?
@@ -70,21 +46,20 @@ public final class Loadable<T>: ObservableObject {
         }
     }
     
+    @discardableResult
     public func load(_ closure: @escaping () async throws ->T?) async throws -> T? {
         cancelLoading()
         let id = UUID()
-        
         task = (id, Task {
             update(.loading, id: id)
             do {
                 let result = try await closure()
-                update(.ready(result), id: id)
+                value = result
+                update(.stop, id: id)
                 return result
             } catch {
                 update(.failed(error, retry: { [weak self] in
-                    Task {
-                        try await self?.load(closure)
-                    }
+                    Task { try await self?.load(closure) }
                 }), id: id)
                 throw error
             }

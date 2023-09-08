@@ -15,8 +15,10 @@ final class PagingContainerState: ObservableObject {
     var paging: (any ObservablePagingLoader)? {
         didSet {
             observer = paging?.loadingState.$state.sink { [weak self] value in
-                if let wSelf = self, value == .stop, wSelf.isLoadingVisible {
-                    wSelf.paging?.loadMore()
+                DispatchQueue.main.async {
+                    if let wSelf = self, value == .stop, wSelf.isLoadingVisible {
+                        wSelf.paging?.loadMore()
+                    }
                 }
             }
         }
@@ -32,6 +34,7 @@ final class PagingContainerState: ObservableObject {
         }
     }
     var refreshing: AnyCancellable?
+    var oldItemsCount: Int = 0
     
     func retry() {
         paging?.loadMore(userInitiated: true)
