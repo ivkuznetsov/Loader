@@ -8,7 +8,8 @@ import Combine
 import Loader
 
 public struct PagingParameters<Item: Hashable> {
-    public let items: [Item]
+    
+    public let content: Paging<Item>.Content
     public let loading: PagingLoadingView
     public let refresh: () async -> ()
 }
@@ -18,18 +19,18 @@ public struct PagingContainer<Content: View>: View {
     @StateObject private var state = PagingContainerState()
     @ObservedObject private var paging: ObservableWrapper<any ObservablePagingLoader>
     
-    private let content: (Self)->Content
+    private let makeContent: (Self)->Content
     
     public init<Paging: ObservablePagingLoader>(_ paging: Paging,
                                                 content: @escaping (_ paramenters: PagingParameters<Paging.DataSource.Item>) -> Content) {
         self.paging = .init(paging)
-        self.content = { content($0.parameters(items: paging.dataSource.content.items)) }
+        self.makeContent = { content($0.parameters(content: paging.dataSource.content)) }
     }
     
     public init(any paging: any ObservablePagingLoader,
                 content: @escaping (_ features: PagingParameters<AnyHashable>) -> Content) {
         self.paging = .init(paging)
-        self.content = { content($0.parameters(items: paging.dataSource.anyContent.items)) }
+        self.makeContent = { content($0.parameters(content: paging.dataSource.anyContent)) }
     }
     
     private func updateContainerFrame(proxy: GeometryProxy) -> some View {
@@ -37,8 +38,8 @@ public struct PagingContainer<Content: View>: View {
         return Color.clear
     }
     
-    private func parameters<Item: Hashable>(items: [Item]) -> PagingParameters<Item> {
-        .init(items: items,
+    private func parameters<Item: Hashable>(content: Paging<Item>.Content) -> PagingParameters<Item> {
+        .init(content: content,
               loading: .init(state: state, loadingState: paging.observed.loadingState),
               refresh: {
             await withCheckedContinuation { continuation in
@@ -54,7 +55,7 @@ public struct PagingContainer<Content: View>: View {
     }
     
     public var body: some View {
-        content(self)
+        makeContent(self)
             .animation(state.oldItemsCount > 0 && paging.observed.itemsCount > 0 ? .easeOut : nil,
                        value: paging.observed.itemsCount)
             .onChange(of: paging.observed.itemsCount, perform: { state.oldItemsCount = $0 })
@@ -68,6 +69,10 @@ public struct PagingContainer<Content: View>: View {
                 GeometryReader { updateContainerFrame(proxy: $0) }
             }.onAppear {
                 state.paging = paging.observed
+            }.onDisappear(perform: {
+                state.contentCache = nil
+            }).onReceive(paging.objectWillChange) {
+                state.contentCache = nil
             }
     }
 }

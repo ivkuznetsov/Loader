@@ -54,17 +54,17 @@ public extension PagingLoader {
 public protocol PagingDataSource {
     associatedtype Item: Hashable
     
-    var content: Page<Item> { get }
+    var content: Paging<Item>.Content { get }
     
-    func update(content: Page<Item>)
+    func update(content: Paging<Item>.Content)
     
     func load(offset: AnyHashable?) async throws
 }
 
 public extension PagingDataSource {
     
-    var anyContent: Page<AnyHashable> {
-        .init(items: content.items, next: content.next)
+    var anyContent: Paging<AnyHashable>.Content {
+        .init(items: content.items, next: content.next, latestChange: content.latestChange)
     }
 }
 
@@ -82,8 +82,8 @@ extension Paging {
         }
     }
     
-    public final class Manager<DataSource: PagingDataSource & ObservableObject>: ObservablePagingLoader {
-    
+    public final class Manager<DataSource: PagingDataSource & ObservableObject>: ObservablePagingLoader where DataSource.Item == Item {
+        
         public let initialLoading: Loader.Operation.Presentation
         private let uid = UUID().uuidString
         
@@ -143,41 +143,66 @@ public extension Paging.Manager where DataSource == Paging.DataSource {
     }
 }
 
+public enum Change {
+    case refreshed
+    case loadedMore
+    case other
+}
+
 extension Paging {
+    
+    public struct Content: Equatable {
+        
+        public let items: [Item]
+        public let next: AnyHashable?
+        public let latestChange: Change
+        
+        public init(items: [Item] = [], next: AnyHashable? = nil, latestChange: Change = .other) {
+            self.items = items
+            self.next = next
+            self.latestChange = latestChange
+        }
+    }
+    
     public typealias CommonManager = Manager<DataSource>
     
     public final class DataSource: PagingDataSource & ObservableObject {
         
         private let direction: Direction
-        private let cache: Cache?
-        @Published public private(set) var content = Page<Item>()
+        
+        @Published public private(set) var content = Content()
         
         public var loadPage: ((_ offset: AnyHashable?) async throws -> Page<Item>)!
-        
-        public init(direction: Direction, cache: Cache? = nil) {
-            self.direction = direction
-            self.cache = cache
-            
-            if let items = cache?.load() {
-                content = Page(items: items)
+        public var cache: Cache? {
+            didSet {
+                if let items = cache?.load() {
+                    content = Content(items: items)
+                }
             }
         }
         
+        public init(direction: Direction) {
+            self.direction = direction
+        }
+        
         @MainActor
-        public func update(content: Page<Item>) {
+        public func update(content: Content) {
             self.content = content
         }
         
         public func load(offset: AnyHashable?) async throws {
             let result = try await loadPage(offset)
+            let directedItems = direction == .bottom ? result.items : result.items.reversed()
             
             if offset == nil {
-                if content != result {
-                    cache?.save(result.items)
-                    await update(content: result)
+                if content.items != directedItems || content.next != result.next {
+                    cache?.save(directedItems)
+                    await update(content: .init(items: directedItems,
+                                                next: result.next,
+                                                latestChange: .refreshed))
                 }
             } else {
-                await append(result)
+                await append(.init(items: directedItems, next: result.next))
             }
         }
         
@@ -195,7 +220,8 @@ extension Paging {
                 }
             }
             await update(content: .init(items: direction == .top ? array.reversed() : array,
-                                        next: allItemsAreTheSame ? nil : content.next))
+                                        next: allItemsAreTheSame ? nil : content.next,
+                                        latestChange: .loadedMore))
         }
     }
     
@@ -203,13 +229,13 @@ extension Paging {
     
     public final class CustomDataSource: PagingDataSource & ObservableObject {
         
-        public var content: Page<Item> { self.get() }
-        private let get: () -> Page<Item>
+        public var content: Paging<Item>.Content { self.get() }
+        private let get: () -> Paging<Item>.Content
         private let load: (_ offset: AnyHashable?) async throws ->()
         private var observer: AnyCancellable?
         
         public init<State: ObservableObject>(state: State,
-                                             get: @escaping (State)->Page<Item>,
+                                             get: @escaping (State)->Paging<Item>.Content,
                                              load: @escaping (_ offset: AnyHashable?, State) async throws ->()) {
             self.load = { try await load($0, state) }
             self.get = { get(state) }
@@ -219,7 +245,7 @@ extension Paging {
             }
         }
         
-        public func update(content: Page<Item>) { }
+        public func update(content: Paging<Item>.Content) { }
         
         public func load(offset: AnyHashable?) async throws {
             try await load(offset)

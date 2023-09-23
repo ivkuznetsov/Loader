@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import Loader
+import SwiftUI
 
 @MainActor
 final class PagingContainerState: ObservableObject {
@@ -15,7 +16,7 @@ final class PagingContainerState: ObservableObject {
     var paging: (any ObservablePagingLoader)? {
         didSet {
             observer = paging?.loadingState.$state.sink { [weak self] value in
-                DispatchQueue.main.async {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     if let wSelf = self, value == .stop, wSelf.isLoadingVisible {
                         wSelf.paging?.loadMore()
                     }
@@ -24,6 +25,8 @@ final class PagingContainerState: ObservableObject {
         }
     }
     private var observer: AnyCancellable?
+    
+    var contentCache: Any?
     
     var containerFrame: CGRect = .zero
     var isLoadingVisible: Bool = false {

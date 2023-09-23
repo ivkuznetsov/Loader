@@ -41,7 +41,7 @@ public struct PagingLoadingView: View {
                 case .loading: InCellProgressView()
                 }
             }
-        }.frame(height: hideLoading ? 0 : 44).frame(maxWidth: .infinity).background {
+        }.frame(height: 30).frame(maxWidth: .infinity).background {
             GeometryReader {
                 updateIsVisible(proxy: $0)
             }

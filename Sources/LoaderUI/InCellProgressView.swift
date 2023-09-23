@@ -31,8 +31,12 @@ public struct InCellProgressView: View {
         case small
     }
     
-    public var style: Style = .small
+    private let style: Style
     @State private var updater: Bool = true
+    
+    public init(style: Style = .small) {
+        self.style = style
+    }
     
     public var body: some View {
         InCellProgressViewRepresentable(updater: $updater, style: style).onAppear {
