@@ -7,6 +7,7 @@ import SwiftUI
 
 private struct InCellProgressViewRepresentable: UIViewRepresentable {
     
+    let tintColor: UIColor
     @Binding var updater: Bool
     let style: InCellProgressView.Style
     
@@ -20,6 +21,7 @@ private struct InCellProgressViewRepresentable: UIViewRepresentable {
     
     func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {
         _ = updater
+        uiView.color = tintColor
         uiView.startAnimating()
     }
 }
@@ -31,15 +33,17 @@ public struct InCellProgressView: View {
         case small
     }
     
+    private let tintColor: UIColor
     private let style: Style
     @State private var updater: Bool = true
     
-    public init(style: Style = .small) {
+    public init(tintColor: UIColor = .label, style: Style = .small) {
         self.style = style
+        self.tintColor = tintColor
     }
     
     public var body: some View {
-        InCellProgressViewRepresentable(updater: $updater, style: style).onAppear {
+        InCellProgressViewRepresentable(tintColor: tintColor, updater: $updater, style: style).onAppear {
             updater.toggle()
         }
     }
