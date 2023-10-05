@@ -141,6 +141,9 @@ public final class Loader: ObservableObject {
     // don't handle Fail for such errors in the UI
     public static var suppressError: ((Error)->Bool)?
     
+    public var supplyRetry: ((Error)->Bool) = { _ in true }
+    public static var supplyRetry: ((Error)->Bool) = { _ in true }
+    
     public static func isSuppressed(_ error: Error) -> Bool {
         (error as NSError).code == NSURLErrorCancelled ||
         error is CancellationError ||
@@ -163,7 +166,7 @@ public final class Loader: ObservableObject {
                         if let error = error {
                             wSelf.fails[operation.id] = Operation.Fail(error: error,
                                                                        presentation: presentation,
-                                                                       retry: { self?.run(presentation, id: operation.id, action) },
+                                                                       retry: Self.supplyRetry(error) && supplyRetry(error) ? { self?.run(presentation, id: operation.id, action) } : nil,
                                                                        dismiss: { self?.fails[operation.id] = nil })
                         }
                         wSelf.complete(id: operation.id)
