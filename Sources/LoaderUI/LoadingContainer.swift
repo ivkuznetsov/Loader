@@ -109,7 +109,7 @@ public struct LoadingContainer<Content: View>: View {
             }
         }).onAppear {
             reload()
-        }.environmentObject(loaders[0])
+        }
     }
 }
 

@@ -131,7 +131,11 @@ public final class Loader: ObservableObject {
         }
     }
     
-    public nonisolated init() {}
+    public nonisolated init() { }
+    
+    deinit {
+        print("Loader deinit")
+    }
     
     @Published public private(set) var processing: [String:Operation] = [:]
     @Published public private(set) var fails: [String:Operation.Fail] = [:]
@@ -164,9 +168,11 @@ public final class Loader: ObservableObject {
                        let operation = operation,
                        wSelf.processing[operation.id] === operation {
                         if let error = error {
+                            let showsRetry = Self.supplyRetry(error) && self?.supplyRetry(error) == true
+                            
                             wSelf.fails[operation.id] = Operation.Fail(error: error,
                                                                        presentation: presentation,
-                                                                       retry: Self.supplyRetry(error) && supplyRetry(error) ? { self?.run(presentation, id: operation.id, action) } : nil,
+                                                                       retry: showsRetry ? { self?.run(presentation, id: operation.id, action) } : nil,
                                                                        dismiss: { self?.fails[operation.id] = nil })
                         }
                         wSelf.complete(id: operation.id)
