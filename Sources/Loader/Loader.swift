@@ -145,7 +145,7 @@ public final class Loader: ObservableObject {
     // don't handle Fail for such errors in the UI
     public static var suppressError: ((Error)->Bool)?
     
-    public var supplyRetry: ((Error)->Bool) = { _ in true }
+    public var supplyRetry: ((Error)->Bool)?
     public static var supplyRetry: ((Error)->Bool) = { _ in true }
     
     public static func isSuppressed(_ error: Error) -> Bool {
@@ -168,7 +168,7 @@ public final class Loader: ObservableObject {
                        let operation = operation,
                        wSelf.processing[operation.id] === operation {
                         if let error = error {
-                            let showsRetry = Self.supplyRetry(error) && self?.supplyRetry(error) == true
+                            let showsRetry = self?.supplyRetry?(error) ?? Self.supplyRetry(error)
                             
                             wSelf.fails[operation.id] = Operation.Fail(error: error,
                                                                        presentation: presentation,
