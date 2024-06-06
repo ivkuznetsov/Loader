@@ -155,6 +155,7 @@ public final class Loader: ObservableObject {
     }
     
     public func run(_ presentation: Operation.Presentation,
+                    cancelOnExit: Bool = true,
                     id: String? = nil,
                     _ action: @escaping (_ progress: @escaping (Double)->()) async throws -> ()) {
         
@@ -187,7 +188,11 @@ public final class Loader: ObservableObject {
                 complete(error)
             }
         }
-        operation.cancel = { task.cancel() }
+        operation.cancel = {
+            if cancelOnExit {
+                task.cancel()
+            }
+        }
         processing[operation.id] = operation
     }
     
