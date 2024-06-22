@@ -7,7 +7,7 @@
 
 import Foundation
 import Combine
-import Loader
+@_exported import Loader
 import SwiftUI
 
 @MainActor

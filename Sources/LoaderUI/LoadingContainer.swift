@@ -4,7 +4,7 @@
 
 import SwiftUI
 import Combine
-import Loader
+@_exported import Loader
 
 #if os(iOS)
 

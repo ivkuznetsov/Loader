@@ -5,7 +5,7 @@
 import Foundation
 import SwiftUI
 import Combine
-import Loader
+@_exported import Loader
 
 public struct PagingParameters<Item: Hashable> {
     

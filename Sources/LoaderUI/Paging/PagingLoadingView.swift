@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftUI
-import Loader
+@_exported import Loader
 
 public struct PagingLoadingView: View {
     

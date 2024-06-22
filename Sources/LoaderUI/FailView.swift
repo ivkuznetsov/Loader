@@ -3,7 +3,7 @@
 //
 
 import SwiftUI
-import Loader
+@_exported import Loader
 
 #if os(iOS)
 
