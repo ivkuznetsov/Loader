@@ -4,7 +4,7 @@
 
 import Foundation
 
-public struct Page<Item> {
+public struct Page<Item>: @unchecked Sendable {
     public let items: [Item]
     public let next: AnyHashable?
     

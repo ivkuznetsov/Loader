@@ -3,6 +3,7 @@
 //  
 
 import Foundation
+import Combine
 
 public typealias LoadingState = Loadable<Void>
 

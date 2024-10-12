@@ -10,6 +10,7 @@ import AppKit
 import Combine
 import SwiftUI
 
+@MainActor
 public protocol PagingLoader {
     associatedtype DataSource: PagingDataSource
     
@@ -28,7 +29,6 @@ public typealias ObservablePagingLoader = PagingLoader & ObservableObject
 
 public extension PagingLoader {
     
-    @MainActor
     func initalRefresh() {
         if loadingState.state != .loading && dataSource.content.items.isEmpty {
             refresh(userInitiated: false)
@@ -39,7 +39,6 @@ public extension PagingLoader {
         load(offset: nil, userInitiated: userInitiated)
     }
     
-    @MainActor
     func loadMore(userInitiated: Bool = false) {
         if (loadingState.state != .loading && dataSource.content.next != nil) || userInitiated {
             load(offset: dataSource.content.next, userInitiated: userInitiated)
@@ -51,6 +50,7 @@ public extension PagingLoader {
     var itemsCount: Int { dataSource.content.items.count }
 }
 
+@MainActor
 public protocol PagingDataSource {
     associatedtype Item: Hashable
     
@@ -73,7 +73,7 @@ public enum Paging<Item: Hashable> { }
 extension Paging {
     
     public struct Cache {
-        let save: ([Item])->()
+        let save: ([Item]) async ->()
         let load: ()->[Item]
         
         public init(save: @escaping ([Item]) -> (), load: @escaping () -> [Item]) {
@@ -82,6 +82,7 @@ extension Paging {
         }
     }
     
+    @MainActor
     public final class Manager<DataSource: PagingDataSource & ObservableObject>: ObservablePagingLoader where DataSource.Item == Item {
         
         public let initialLoading: Loader.Operation.Presentation
@@ -104,7 +105,6 @@ extension Paging {
             }
         }
         
-        @MainActor
         public func load(offset: AnyHashable?, userInitiated: Bool) {
             loader.run(userInitiated ? .none(fail: .modal) : (dataSource.content.items.isEmpty ? initialLoading : .none(fail: offset == nil ? .nonblocking : .none)),
                        id: uid) { [weak self] _ in
@@ -123,7 +123,6 @@ extension Paging {
             }
         }
         
-        @MainActor
         public func reset() {
             loader.cancelOperation(uid)
             dataSource.update(content: .init())
@@ -166,13 +165,14 @@ extension Paging {
     
     public typealias CommonManager = Manager<DataSource>
     
+    @MainActor
     public final class DataSource: PagingDataSource & ObservableObject {
         
-        private let direction: Direction
+        private nonisolated let direction: Direction
         
         @Published public private(set) var content = Content()
         
-        public var loadPage: ((_ offset: AnyHashable?) async throws -> Page<Item>)!
+        public var loadPage: (@MainActor (_ offset: AnyHashable?) async throws -> Page<Item>)!
         public var cache: Cache? {
             didSet {
                 if let items = cache?.load() {
@@ -185,7 +185,6 @@ extension Paging {
             self.direction = direction
         }
         
-        @MainActor
         public func update(content: Content) {
             self.content = content
         }
@@ -196,19 +195,17 @@ extension Paging {
             
             if offset == nil {
                 if content.items != directedItems || content.next != result.next {
-                    cache?.save(directedItems)
-                    await update(content: .init(items: directedItems,
-                                                next: result.next,
-                                                latestChange: .refreshed))
+                    update(content: .init(items: directedItems, next: result.next, latestChange: .refreshed))
+                    await cache?.save(directedItems)
                 }
             } else {
-                await append(.init(items: directedItems, next: result.next))
+                await append(.init(items: directedItems, next: result.next), currentContent: self.content.items)
             }
         }
         
-        private func append(_ content: Page<Item>) async {
+        private nonisolated func append(_ content: Page<Item>, currentContent: [Item]) async {
             let itemsToAdd = direction == .top ? content.items.reversed() : content.items
-            var array = direction == .top ? self.content.items.reversed() : self.content.items
+            var array = direction == .top ? currentContent.reversed() : currentContent
             var set = Set(array)
             var allItemsAreTheSame = true // backend returned the same items for the next page, prevent infinit loading
             
@@ -227,16 +224,17 @@ extension Paging {
     
     public typealias CustomManager = Manager<CustomDataSource>
     
+    @MainActor
     public final class CustomDataSource: PagingDataSource & ObservableObject {
         
         public var content: Paging<Item>.Content { self.get() }
         private let get: () -> Paging<Item>.Content
-        private let load: (_ offset: AnyHashable?) async throws ->()
+        private let load: @MainActor (_ offset: AnyHashable?) async throws ->()
         private var observer: AnyCancellable?
         
         public init<State: ObservableObject>(state: State,
                                              get: @escaping (State)->Paging<Item>.Content,
-                                             load: @escaping (_ offset: AnyHashable?, State) async throws ->()) {
+                                             load: @escaping @MainActor (_ offset: AnyHashable?, State) async throws ->()) {
             self.load = { try await load($0, state) }
             self.get = { get(state) }
             
