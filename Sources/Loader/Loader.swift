@@ -12,11 +12,12 @@ import UIKit
 @MainActor
 public final class Loader: ObservableObject {
     
+    @MainActor
     public final class Operation: Hashable, ObservableObject {
         
-        public enum Presentation: Hashable {
+        public enum Presentation: Hashable, Sendable {
             
-            public enum Fail: Hashable {
+            public enum Fail: Hashable, Sendable {
                 
                 // cover screen with opaque fail view
                 case opaque
@@ -40,7 +41,7 @@ public final class Loader: ObservableObject {
             // shows loading bar at the top of the screen without blocking the content, error is shown as label at the top for couple of seconds
             case nonblocking(fail: Fail = .nonblocking)
             
-            case custom(update: (_ isLoading: Bool)->(), fail: Fail = .modal)
+            case custom(update: @MainActor @Sendable (_ isLoading: Bool)->(), fail: Fail = .modal)
             
             case none(fail: Fail = .none)
             
@@ -72,12 +73,12 @@ public final class Loader: ObservableObject {
             }
         }
         
-        public struct Fail {
+        public struct Fail: Sendable {
             public let id = UUID()
             public let error: Error
             public let presentation: Presentation
-            public let retry: (()->())?
-            public let dismiss: ()->()
+            public let retry: (@Sendable @MainActor ()->())?
+            public let dismiss: @Sendable @MainActor ()->()
         }
         
         @Published public private(set) var progress: Double = 0
@@ -87,7 +88,7 @@ public final class Loader: ObservableObject {
         public fileprivate(set) var cancel: (()->())?
         
         #if os(iOS)
-        private var backgroundTaskId: UIBackgroundTaskIdentifier?
+        private let backgroundTaskId: UIBackgroundTaskIdentifier?
         #endif
         
         @MainActor init(id: String, presentation: Presentation) {
@@ -95,14 +96,15 @@ public final class Loader: ObservableObject {
             self.presentation = presentation
             
             #if os(iOS)
-            backgroundTaskId = UIApplication.shared.beginBackgroundTask { [weak self] in
-                self?.endTask()
-            }
+            var endTask: (()->())?
+            backgroundTaskId = UIApplication.shared.beginBackgroundTask { endTask?() }
+            endTask = { [weak self] in self?.endTask() }
+            
             #endif
         }
         
         #if os(iOS)
-        private func endTask() {
+        private nonisolated func endTask() {
             if let task = backgroundTaskId {
                 Task { @MainActor in
                     UIApplication.shared.endBackgroundTask(task)
@@ -111,17 +113,17 @@ public final class Loader: ObservableObject {
         }
         #endif
         
-        fileprivate func update(progress: Double) {
-            Task { @MainActor [weak self] in
-                self?.progress = progress
+        fileprivate nonisolated func update(progress: Double) {
+            Task { @MainActor in
+                self.progress = progress
             }
         }
         
-        public func hash(into hasher: inout Hasher) {
+        public nonisolated func hash(into hasher: inout Hasher) {
             hasher.combine(id)
         }
         
-        public static func == (lhs: Loader.Operation, rhs: Loader.Operation) -> Bool { lhs.hashValue == rhs.hashValue }
+        public nonisolated static func == (lhs: Loader.Operation, rhs: Loader.Operation) -> Bool { lhs.hashValue == rhs.hashValue }
         
         deinit {
             cancel?()
@@ -157,41 +159,37 @@ public final class Loader: ObservableObject {
     public func run(_ presentation: Operation.Presentation,
                     cancelOnExit: Bool = true,
                     id: String? = nil,
-                    _ action: @escaping (_ progress: @escaping (Double)->()) async throws -> ()) {
+                    _ action: @escaping (_ progress: @Sendable @escaping (Double)->()) async throws -> ()) {
         
         let operation = create(id: id, presentation: presentation)
         
-        let task = Task.detached { [weak self, weak operation] in
+        let complete: (Error?)->() = { [weak self, weak operation] error in
+            guard let wSelf = self, let operation,
+                  wSelf.processing[operation.id] === operation else { return }
             
-            let complete: (Error?)->() = { error in
-                Task { @MainActor [weak self, weak operation] in
-                    if let wSelf = self,
-                       let operation = operation,
-                       wSelf.processing[operation.id] === operation {
-                        if let error = error {
-                            let showsRetry = self?.supplyRetry?(error) ?? Self.supplyRetry(error)
-                            
-                            wSelf.fails[operation.id] = Operation.Fail(error: error,
-                                                                       presentation: presentation,
-                                                                       retry: showsRetry ? { self?.run(presentation, id: operation.id, action) } : nil,
-                                                                       dismiss: { self?.fails[operation.id] = nil })
-                        }
-                        wSelf.complete(id: operation.id)
-                    }
-                }
+            if let error {
+                let showsRetry = wSelf.supplyRetry?(error) ?? Self.supplyRetry(error)
+                let retryBlock: @Sendable @MainActor ()->() = { self?.run(presentation, id: operation.id, action) }
+                
+                wSelf.fails[operation.id] = Operation.Fail(error: error,
+                                                           presentation: presentation,
+                                                           retry: showsRetry ? retryBlock : nil,
+                                                           dismiss: { self?.fails[operation.id] = nil })
             }
-            
+            wSelf.complete(id: operation.id)
+        }
+        
+        let task = Task { @MainActor [operation] in
             do {
-                try await action { operation?.update(progress: $0) }
+                try await action { operation.update(progress: $0) }
                 complete(nil)
             } catch {
                 complete(error)
             }
         }
+        
         operation.cancel = {
-            if cancelOnExit {
-                task.cancel()
-            }
+            if cancelOnExit { task.cancel() }
         }
         processing[operation.id] = operation
     }

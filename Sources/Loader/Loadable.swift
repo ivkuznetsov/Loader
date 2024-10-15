@@ -10,10 +10,10 @@ public typealias LoadingState = Loadable<Void>
 @MainActor
 public final class Loadable<T>: ObservableObject {
     
-    public enum State: Equatable {
+    public enum State: Equatable, Sendable {
         case stop
         case loading
-        case failed(Error, retry: (()->())? = nil)
+        case failed(Error, retry: (@Sendable @MainActor ()->())? = nil)
         
         public static func == (lhs: State, rhs: State) -> Bool {
             switch (lhs, rhs) {
