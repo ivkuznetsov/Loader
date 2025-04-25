@@ -22,14 +22,16 @@ public struct LoadingBar: View {
         var body: some View {
             GeometryReader { proxy in
                 Path {
-                    $0.move(to: CGPoint(x: 0, y: 0.15))
-                    $0.addLine(to: CGPoint(x: proxy.size.width, y: 0.15))
+                    $0.move(to: CGPoint(x: 0, y: 1.5))
+                    $0.addLine(to: CGPoint(x: proxy.size.width, y: 1.5))
                 }.stroke(Color(.label).opacity(0.1), style: .init(lineWidth: 3,
                                                                      lineCap: .round,
                                                                      dash: [5, 8],
                                                                      dashPhase: startAnimation ? -50 : 0))
                 .animation(Animation.linear.repeatForever(autoreverses: false), value: startAnimation)
-                .onAppear { startAnimation = true }
+                .onAppear {
+                    withAnimation { startAnimation.toggle() }
+                }
             }
         }
     }
@@ -41,8 +43,8 @@ public struct LoadingBar: View {
         var body: some View {
             GeometryReader { proxy in
                 Path {
-                    $0.move(to: CGPoint(x: 0, y: 0.15))
-                    $0.addLine(to: CGPoint(x: proxy.size.width, y: 0.15))
+                    $0.move(to: CGPoint(x: 0, y: 1.5))
+                    $0.addLine(to: CGPoint(x: proxy.size.width, y: 1.5))
                 }.trim(to: progress)
                     .stroke(.tint, style: .init(lineWidth: 3, lineCap: .round))
                     .animation(.easeOut, value: progress)
@@ -52,7 +54,7 @@ public struct LoadingBar: View {
     }
     
     public var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             ZStack {
                 Color.secondary.opacity(0.2)
                 if operation.progress > 0 {
