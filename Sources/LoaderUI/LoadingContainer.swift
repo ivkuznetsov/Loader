@@ -8,49 +8,36 @@ import Combine
 
 #if os(iOS)
 
-public struct LoadingContainer<Content: View>: View {
+public struct Customization {
+    fileprivate let loadingView: (Loader.Operation) -> AnyView
+    fileprivate let loadingBar: (Loader.Operation) -> AnyView
+    fileprivate let failView: (Loader.Operation.Fail) -> AnyView
+    fileprivate let failBar: (Loader.Operation.Fail) -> AnyView
     
-    public struct Customization {
-        fileprivate let loadingView: (Loader.Operation) -> AnyView
-        fileprivate let loadingBar: (Loader.Operation) -> AnyView
-        fileprivate let failView: (Loader.Operation.Fail) -> AnyView
-        fileprivate let failBar: (Loader.Operation.Fail) -> AnyView
-        
-        public init(loadingView: @escaping (Loader.Operation) -> AnyView = { AnyView(LoadingView(operation: $0)) },
-                    loadingBar: @escaping (Loader.Operation) -> AnyView = { AnyView(LoadingBar(operation: $0)) },
-                    failView: @escaping (Loader.Operation.Fail) -> AnyView = { AnyView(FailView(fail: $0)) },
-                    failBar: @escaping (Loader.Operation.Fail) -> AnyView = { AnyView(FailToast(fail: $0)) }) {
-            self.loadingView = loadingView
-            self.loadingBar = loadingBar
-            self.failView = failView
-            self.failBar = failBar
-        }
+    public init(loadingView: @escaping (Loader.Operation) -> AnyView = { AnyView(LoadingView(operation: $0)) },
+                loadingBar: @escaping (Loader.Operation) -> AnyView = { AnyView(LoadingBar(operation: $0)) },
+                failView: @escaping (Loader.Operation.Fail) -> AnyView = { AnyView(FailView(fail: $0)) },
+                failBar: @escaping (Loader.Operation.Fail) -> AnyView = { AnyView(FailToast(fail: $0)) }) {
+        self.loadingView = loadingView
+        self.loadingBar = loadingBar
+        self.failView = failView
+        self.failBar = failBar
     }
+}
+
+private struct LoadingContainerModifier: ViewModifier {
     
-    @State private var loaders: [Loader]
+    let loaders: [Loader]
     @State private var operations: [Loader.Operation.Presentation : Loader.Operation] = [:]
     @State private var fails: [Loader.Operation.Presentation.Fail : Loader.Operation.Fail] = [:]
     
-    private let content: Content
     private let customization: Customization
     
-    public init(_ loaders: [Loader],
-                customization: Customization = .init(),
-                @ViewBuilder content: ()->Content) {
-        self._loaders = .init(wrappedValue: loaders)
-        self.content = content()
+    init(_ loaders: [Loader], customization: Customization) {
+        self.loaders = loaders
         self.customization = customization
     }
     
-    public init(_ loader: Loader,
-                customization: Customization = .init(),
-                @ViewBuilder content: ()->Content) {
-        self._loaders = .init(wrappedValue: [loader])
-        self.content = content()
-        self.customization = customization
-    }
-    
-    @MainActor
     private func reload() {
         var operations: [Loader.Operation.Presentation : Loader.Operation] = [:]
         loaders.flatMap { $0.processing.values }.forEach {
@@ -74,7 +61,7 @@ public struct LoadingContainer<Content: View>: View {
         }
     }
     
-    public var body: some View {
+    func body(content: Content) -> some View {
         content.overlay {
             ZStack {
                 if let fail = fails[.opaque] {
@@ -93,23 +80,62 @@ public struct LoadingContainer<Content: View>: View {
                     customization.loadingView(operation)
                 }
             }
-        }.alert(isPresented: Binding(get: { fails[.modal] != nil  }, set: { _ in
+        }
+        .alert(isPresented: Binding(get: {
+            fails[.modal] != nil
+        }, set: { _ in
             fails[.modal]?.dismiss()
             fails[.modal] = nil
         }),
-                error: fails[.modal]?.error.asLocalizedError,
-                actions: {
+               error: fails[.modal]?.error.asLocalizedError,
+               actions: {
             Button("OK", action: { })
             if let retry = fails[.modal]?.retry {
                 Button("Retry", action: retry)
             }
-        }).onReceive(Publishers.MergeMany(loaders.map { $0.objectWillChange }), perform: { _ in
-            DispatchQueue.main.async {
-                reload()
-            }
-        }).onAppear {
-            reload()
+        })
+        .onReceive(Publishers.MergeMany(loaders.map { $0.objectWillChange })) { _ in
+            DispatchQueue.main.async { reload() }
         }
+        .onAppear { reload() }
+    }
+}
+
+public struct LoadingContainer<Content: View>: View {
+    
+    private let loaders: [Loader]
+    private let customization: Customization
+    private let content: ()->Content
+    
+    public init(_ loaders: [Loader],
+                customization: Customization = .init(),
+                @ViewBuilder content: @escaping ()->Content) {
+        self.loaders = loaders
+        self.content = content
+        self.customization = customization
+    }
+    
+    public init(_ loader: Loader,
+                customization: Customization = .init(),
+                @ViewBuilder content: @escaping ()->Content) {
+        loaders = [loader]
+        self.content = content
+        self.customization = customization
+    }
+    
+    public var body: some View {
+        content().withLoading(loaders, customization: customization)
+    }
+}
+
+public extension View {
+    
+    func withLoading(_ loader: Loader, customization: Customization = .init()) -> some View {
+        withLoading([loader], customization: customization)
+    }
+    
+    func withLoading(_ loaders: [Loader], customization: Customization = .init()) -> some View {
+        modifier(LoadingContainerModifier(loaders, customization: customization))
     }
 }
 
